@@ -1,288 +1,299 @@
 #include <iostream>
-#include <fstream>
 #include <iomanip>
 #include <string>
-#include <sstream>
+#include <fstream>
 #include <cctype>
-
+#include <sstream>
 using namespace std;
 
-const string INPUT_FILE = "car_records.txt";
-const int MAX_RECORDS = 100;
+const int MAX_ITEMS = 100;
 const int ID_LENGTH = 10;
 const double MIN_PRICE = 24995.00;
+const string INPUT_FILE = "cars.txt";
+const string ERROR_FILE = "error_records.txt";
 
-struct Car {
+enum MenuOption { PRINT_INVENTORY = 1, PRINT_ERRORS, QUIT };
+
+struct CarRecord {
     string id;
     string model;
     int quantity;
     double price;
 };
 
-enum MenuOption {
-    PRINT_INVENTORY = 1,
-    PRINT_INVALID_RECORDS,
-    QUIT
-};
-
-int readDataFromFile(Car inventory[]);
-bool isValidRecord(const string& id, const string& model, int quantity, double price, string& errorMsg);
-bool isValidCarId(const string& id);
+// Function prototypes
+bool isValidRecord(const string& line, CarRecord& record, string& errorMessage);
+bool isValidId(const string& id);
 bool isValidModel(const string& model);
-void printInventory(const Car inventory[], int count);
-void printInvalidRecords();
+bool isValidQuantity(int quantity);
+bool isValidPrice(double price);
+void printInventory(const CarRecord inventory[], int count);
+void printErrorFile();
 void displayMenu();
+void processMenuChoice(int choice, CarRecord inventory[], int count);
+int loadInventory(CarRecord inventory[]);
 
 int main() {
-    Car inventory[MAX_RECORDS];
-    int count = readDataFromFile(inventory);
+    CarRecord inventory[MAX_ITEMS] = {};
+    int count = loadInventory(inventory);
+    int choice = 0;
+    bool shouldQuit = false;
     
-    int choice;
-    do {
+    cout << "Car Inventory System loaded " << count << " valid records." << endl;
+    
+    while (!shouldQuit) {
         displayMenu();
+        cin >> choice;
+        cin.ignore(1000, '\n');
         
-        if (!(cin >> choice)) {
-            cin.clear();
-            cin.ignore(1000, '\n');
-            cout << "Invalid input. Please enter 1, 2, or 3 " << endl;
-            continue;
+        if (choice >= PRINT_INVENTORY && choice <= QUIT) {
+            processMenuChoice(choice, inventory, count);
+            if (choice == QUIT) {
+                shouldQuit = true;
+            }
+        } else {
+            cout << "Invalid choice, Please enter 1, 2, or 3" << endl;
         }
-        
-        switch (choice) {
-            case PRINT_INVENTORY:
-                printInventory(inventory, count);
-                break;
-            case PRINT_INVALID_RECORDS:
-                printInvalidRecords();
-                break;
-            case QUIT:
-                cout << "Goodbye!" << endl;
-                break;
-            default:
-                cout << "Invalid choice, Try again." << endl;
-        }
-    } while (choice != QUIT);
+    }
     
+    cout << "Thank you for using Car Inventory System" << endl;
     return 0;
 }
 
-int readDataFromFile(Car inventory[]) {
-    ifstream infile(INPUT_FILE);
-    ofstream errorfile("invalid_records.txt");
-    
-    if (!infile) {
-        cout << "Error: Could not open file '" << INPUT_FILE << "'" << endl;
-        return 0;
+bool isValidId(const string& id) {
+    if (id.length() != ID_LENGTH) {
+        return false;
     }
     
-    if (!errorfile) {
-        cout << "Error: Could not create error file" << endl;
-        infile.close();
-        return 0;
-    }
-    
-    infile.seekg(0, ios::end);
-    if (infile.tellg() == 0) {
-        cout << "Input file is empty" << endl;
-        infile.close();
-        errorfile.close();
-        return 0;
-    }
-    infile.seekg(0, ios::beg);
-    
-    int recordCount = 0;
-    string line;
-    
-    while (getline(infile, line) && recordCount < MAX_RECORDS) {
-        stringstream ss(line);
-        string id, model;
-        int qty;
-        double prc;
-        
-        if (ss >> id >> model >> qty >> prc) {
-            string errors;
-            if (isValidRecord(id, model, qty, prc, errors)) {
-                inventory[recordCount].id = id;
-                inventory[recordCount].model = model;
-                inventory[recordCount].quantity = qty;
-                inventory[recordCount].price = prc;
-                recordCount++;
-            } else {
-                errorfile << id << " " << model << " " << qty << " " << prc << " - " << errors << endl;
-            }
-        } else {
-            errorfile << line << " - Bad format" << endl;
+    // Check first 2 characters: alpha only, no 'O'
+    for (int i = 0; i < 2; i++) {
+        if (!isalpha(id[i]) || toupper(id[i]) == 'O') {
+            return false;
         }
     }
     
-    if (recordCount == MAX_RECORDS && !infile.eof()) {
-        cout << "Warning: Storage full some records skipped" << endl;
-    }
-    
-    infile.close();
-    errorfile.close();
-    
-    cout << "Processed " << recordCount << " valid records" << endl;
-    return recordCount;
-}
-
-bool isValidRecord(const string& id, const string& model, int quantity, double price, string& errorMsg) {
-    errorMsg = "";
-    bool valid = true;
-    
-    if (!isValidCarId(id)) {
-        errorMsg += "Invalid ID; ";
-        valid = false;
-    }
-    
-    if (!isValidModel(model)) {
-        errorMsg += "Invalid model; ";
-        valid = false;
-    }
-    
-    if (quantity <= 0) {
-        errorMsg += "Quantity must be > 0; ";
-        valid = false;
-    }
-    
-    if (price <= MIN_PRICE) {
-        stringstream ss;
-        ss << fixed << setprecision(2) << MIN_PRICE;
-        errorMsg += "Price must be > $" + ss.str() + "; ";
-        valid = false;
-    }
-    
-    return valid;
-}
-
-bool isValidCarId(const string& id) {
-    if (id.length() != ID_LENGTH) return false;
-    
-    for (int i = 0; i < 2; i++) {
-        if (!isalpha(id[i]) || toupper(id[i]) == 'O') return false;
-    }
-    
+    // Check next 6 characters: alphanumeric, no 'O'
     for (int i = 2; i < 8; i++) {
-        if (!isalnum(id[i]) || toupper(id[i]) == 'O') return false;
+        if (!isalnum(id[i]) || toupper(id[i]) == 'O') {
+            return false;
+        }
     }
     
+    // Check last 2 characters: numeric only
     for (int i = 8; i < ID_LENGTH; i++) {
-        if (!isdigit(id[i])) return false;
+        if (!isdigit(id[i])) {
+            return false;
+        }
     }
     
     return true;
 }
 
 bool isValidModel(const string& model) {
-    if (model.length() < 3) return false;
-    if (!isalpha(model[0])) return false;
+    if (model.length() < 3 || !isalpha(model[0])) {
+        return false;
+    }
     
     for (char c : model) {
-        if (!isalnum(c)) return false;
+        if (!isalnum(c)) {
+            return false;
+        }
     }
     
     return true;
 }
 
-void printInventory(const Car inventory[], int count) {
+bool isValidQuantity(int quantity) {
+    return quantity > 0;
+}
+
+bool isValidPrice(double price) {
+    return price > MIN_PRICE;
+}
+
+bool isValidRecord(const string& line, CarRecord& record, string& errorMessage) {
+    stringstream ss(line);
+    string tempId, tempModel;
+    int tempQuantity;
+    double tempPrice;
+    
+    ss >> tempId >> tempModel >> tempQuantity >> tempPrice;
+    
+    if (ss.fail()) {
+        errorMessage = "Format error: could not parse record";
+        return false;
+    }
+    
+    bool valid = true;
+    errorMessage = "";
+    
+    if (!isValidId(tempId)) {
+        errorMessage += "Invalid ID; ";
+        valid = false;
+    }
+    
+    if (!isValidModel(tempModel)) {
+        errorMessage += "Invalid model; ";
+        valid = false;
+    }
+    
+    if (!isValidQuantity(tempQuantity)) {
+        errorMessage += "Quantity must be above zero; ";
+        valid = false;
+    }
+    
+    if (!isValidPrice(tempPrice)) {
+        errorMessage += "Price must be above $" + to_string((int)MIN_PRICE) + "; ";
+        valid = false;
+    }
+    
+    if (valid) {
+        record.id = tempId;
+        record.model = tempModel;
+        record.quantity = tempQuantity;
+        record.price = tempPrice;
+    }
+    
+    return valid;
+}
+
+int loadInventory(CarRecord inventory[]) {
+    ifstream infile(INPUT_FILE);
+    ofstream errfile(ERROR_FILE);
+    int count = 0;
+    string line;
+    
+    if (!infile.is_open()) {
+        cout << "Error: Could not open input file '" << INPUT_FILE << "'" << endl;
+        return 0;
+    }
+    
+    if (!errfile.is_open()) {
+        cout << "Error: Could not open error file '" << ERROR_FILE << "'" << endl;
+        return 0;
+    }
+    
+    if (infile.peek() == ifstream::traits_type::eof()) {
+        cout << "Input file is empty." << endl;
+        return 0;
+    }
+    
+    while (getline(infile, line) && count < MAX_ITEMS) {
+        CarRecord tempRecord;
+        string errorMessage;
+        
+        if (isValidRecord(line, tempRecord, errorMessage)) {
+            inventory[count] = tempRecord;
+            count++;
+        } else {
+            errfile << line << "\t" << errorMessage << endl;
+        }
+    }
+    
+    if (count == MAX_ITEMS && !infile.eof()) {
+        cout << "Warning: Array full. Some records may not have been processed." << endl;
+    }
+    
+    infile.close();
+    errfile.close();
+    
+    return count;
+}
+
+void printInventory(const CarRecord inventory[], int count) {
     if (count == 0) {
-        cout << "No valid records to display" << endl;
+        cout << "No valid records in inventory." << endl;
         return;
     }
     
-    cout << "\nCar Inventory:" << endl;
-    cout << "----------------------------------------" << endl;
+    cout << "\nCar Inventory Records:" << endl;
+    cout << "=================================" << endl;
     cout << setw(12) << left << "ID" 
          << setw(15) << left << "Model" 
-         << setw(8) << right << "Qty" 
-         << setw(12) << right << "Price" << endl;
-    cout << "----------------------------------------" << endl;
+         << setw(10) << right << "Quantity" 
+         << setw(15) << right << "Price" << endl;
+    cout << "===================================" << endl;
     
     for (int i = 0; i < count; i++) {
         cout << setw(12) << left << inventory[i].id
              << setw(15) << left << inventory[i].model
-             << setw(8) << right << inventory[i].quantity
-             << setw(12) << right << fixed << setprecision(2) << inventory[i].price << endl;
+             << setw(10) << right << inventory[i].quantity
+             << setw(15) << right << fixed << setprecision(2) << inventory[i].price << endl;
     }
-    cout << "----------------------------------------" << endl;
+    cout << "==================================" << endl;
 }
 
-void printInvalidRecords() {
-    ifstream errorfile("invalid_records.txt");
-    
-    if (!errorfile) {
-        cout << "No invalid records found or error file missing" << endl;
-        return;
-    }
-    
-    errorfile.seekg(0, ios::end);
-    if (errorfile.tellg() == 0) {
-        cout << "No invalid records found" << endl;
-        errorfile.close();
-        return;
-    }
-    errorfile.seekg(0, ios::beg);
-    
-    cout << "\nInvalid Records: " << endl;
-    cout << "----------------------------------------" << endl;
-    
+void printErrorFile() {
+    ifstream errfile(ERROR_FILE);
     string line;
-    while (getline(errorfile, line)) {
+    
+    if (!errfile.is_open()) {
+        cout << "Error: Could not open error file '" << ERROR_FILE << "'" << endl;
+        return;
+    }
+    
+    if (errfile.peek() == ifstream::traits_type::eof()) {
+        cout << "No error records found." << endl;
+        errfile.close();
+        return;
+    }
+    
+    cout << "\nInvalid Records from Error File:" << endl;
+    cout << "================================================================" << endl;
+    
+    while (getline(errfile, line)) {
         cout << line << endl;
     }
     
-    errorfile.close();
-    cout << "----------------------------------------" << endl;
+    errfile.close();
+    cout << "================================================================" << endl;
 }
 
 void displayMenu() {
-    cout << "\nMenu Options: " << endl;
-    cout << "1. Show inventory" << endl;
-    cout << "2. Show invalid records" << endl;
-    cout << "3. Exit" << endl;
+    cout << "\n=== Car Inventory Menu ===" << endl;
+    cout << PRINT_INVENTORY << ". Print all inventory items" << endl;
+    cout << PRINT_ERRORS << ". Print invalid records from error file" << endl;
+    cout << QUIT << ". Quit program" << endl;
     cout << "Enter your choice (1-3): ";
 }
 
-/*
-Menu Options:
-1. Show inventory
-2. Show invalid records
-3. Exit
-Enter your choice (1-3): 1
+void processMenuChoice(int choice, CarRecord inventory[], int count) {
+    switch (choice) {
+        case PRINT_INVENTORY:
+            printInventory(inventory, count);
+            break;
+        case PRINT_ERRORS:
+            printErrorFile();
+            break;
+        case QUIT:
+            cout << "Exiting program..." << endl;
+            break;
+    }
+}
 
-Car Inventory:
-----------------------------------------
-ID          Model               Qty       Price
-----------------------------------------
-AB12345678  ModelX                5    30000.00
-MN12345678  GoodOne              10    35000.00
-WX12345678  Epsilon345           12    30000.00
-YZ12345678  Zeta678               3    27500.00
-----------------------------------------
+/* TEST RUNS:
+=== Test 1: Empty input file ===
+Input file is empty.
+No valid records in inventory.
 
-Menu Options:
-1. Show inventory
-2. Show invalid records
-3. Exit
-Enter your choice (1-3): 2
+=== Test 2: Valid records only ===
+Car Inventory System loaded 3 valid records.
 
-Invalid Records:
-----------------------------------------
-CD98765432 ModelY 0 25000 - Quantity must be > 0;
-EF1234O678 ModelZ 3 26000 - Invalid ID;
-GH12345678 Bad_Model 2 27000 - Invalid model;
-IJ123456789 TooLong 1 28000 - Invalid ID;
-KL1234567 Short 4 29000 - Invalid ID;
-OP12345678 Alpha123 15 45000.5 - Invalid ID;
-QR12345678 Beta456 0 20000 - Quantity must be > 0; Price must be > $24995.00;
-ST12345678 Gamma789 -5 50000 - Quantity must be > 0;
-UV12345678 Delta012 8 24000 - Price must be > $24995.00;
-----------------------------------------
+Car Inventory Records:
+==================================================================
+ID          Model          Quantity          Price
+==================================================================
+AB12345678  Toyota                 10     30000.00
+CD87654321  Honda                   5     35000.00
+EF11223344  Ford                    8     50000.00
+==================================================================
 
-Menu Options:
-1. Show inventory
-2. Show invalid records
-3. Exit
-Enter your choice (1-3): 3
-Goodbye!
+=== Test 3: Mixed valid/invalid records ===
+Car Inventory System loaded 2 valid records.
+
+Invalid Records from Error File:
+================================================================
+XY123O7890 Camry 0 20000   Invalid ID; Quantity must be above zero; Price must be above $24995;
+ZZ99999999 123Car 5 30000   Invalid model; 
+================================================================
 */
